@@ -1,23 +1,17 @@
-// Configuration Object with service_name and service_port
-#[derive(Debug)]
-struct Configuration {
-    service_name: String,
-    service_port: u16
-}
+use crate::config::root::configuration::Configuration;
 
+mod config;
 
 fn main() {
-    let config: Configuration = Configuration {
-        service_name: String::from("todo"),
-        service_port: 8080u16
-    };
+    let config: Configuration =
+        match crate::config::root::configuration::Configuration::from_env() {
+            Ok(cfg) => cfg,
+            Err(err) => {
+                eprintln!("Invalid configuration: {}", err);
+                std::process::exit(1);
+            }
+        };
 
-
-    // Print manually
-    println!("Hello, World!");
-    println!("Service: {}", config.service_name);
-    println!("Service port: {}", config.service_port);
-
-    // Print using Debug trait
-    println!("{:?}", config)
+    println!("Service name: {}", config.app.service_name());
+    println!("Service port: {}", config.app.service_port());
 }
