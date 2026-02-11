@@ -2,9 +2,12 @@ stages:
   - check
   - test
   - build
+  - release
 
 variables:
   CARGO_HOME: "${CI_PROJECT_DIR}/.cargo"
+  # Pin Rust version for reproducible builds.
+  RUST_VERSION: "1.93.0"
 
 # Cache Cargo registry and build artifacts across jobs
 .rust-cache: &rust-cache
@@ -17,7 +20,7 @@ variables:
 
 fmt:
   stage: check
-  image: rust:latest
+  image: rust:${RUST_VERSION}
   <<: *rust-cache
   before_script:
     - rustup component add rustfmt
@@ -26,32 +29,84 @@ fmt:
 
 clippy:
   stage: check
-  image: rust:latest
+  image: rust:${RUST_VERSION}
   <<: *rust-cache
   before_script:
     - rustup component add clippy
   script:
-    - cargo clippy -- -D warnings
+    - cargo clippy --locked -- -D warnings
 
 test:
   stage: test
-  image: rust:latest
+  image: rust:${RUST_VERSION}
   <<: *rust-cache
   script:
-    - cargo test -- --test-threads=1
+    - cargo test --locked -- --test-threads=1
   needs:
     - fmt
     - clippy
 
-build:
+build:debug:
   stage: build
-  image: rust:latest
+  image: rust:${RUST_VERSION}
   <<: *rust-cache
   script:
-    - cargo build --release
+    - cargo build --locked
+    - cp target/debug/rust-todo rust-todo-debug
   artifacts:
     paths:
-      - target/release/rust-todo
+      - rust-todo-debug
     expire_in: 1 week
   needs:
     - test
+
+build:release:
+  stage: build
+  image: rust:${RUST_VERSION}
+  <<: *rust-cache
+  script:
+    - cargo build --locked --release
+    - cp target/release/rust-todo rust-todo-release
+  artifacts:
+    paths:
+      - rust-todo-release
+    expire_in: 1 week
+  needs:
+    - test
+
+upload:
+  stage: release
+  image: curlimages/curl:latest
+  rules:
+    - if: $CI_COMMIT_TAG
+  script:
+    - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" \
+        --upload-file rust-todo-debug \
+        "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/rust-todo/${CI_COMMIT_TAG}/rust-todo-debug"
+    - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" \
+        --upload-file rust-todo-release \
+        "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/rust-todo/${CI_COMMIT_TAG}/rust-todo-release"
+  needs:
+    - build:debug
+    - build:release
+
+release:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  rules:
+    - if: $CI_COMMIT_TAG
+  script:
+    - echo "Creating release ${CI_COMMIT_TAG}"
+  needs:
+    - upload
+  release:
+    tag_name: $CI_COMMIT_TAG
+    description: "Release ${CI_COMMIT_TAG}"
+    assets:
+      links:
+        - name: "rust-todo-release (optimized)"
+          url: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/rust-todo/${CI_COMMIT_TAG}/rust-todo-release"
+        - name: "rust-todo-debug (unoptimized + debug info)"
+          url: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/rust-todo/${CI_COMMIT_TAG}/rust-todo-debug"
