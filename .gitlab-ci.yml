@@ -1,0 +1,57 @@
+stages:
+  - check
+  - test
+  - build
+
+variables:
+  CARGO_HOME: "${CI_PROJECT_DIR}/.cargo"
+
+# Cache Cargo registry and build artifacts across jobs
+.rust-cache: &rust-cache
+  cache:
+    key: "${CI_COMMIT_REF_SLUG}-rust"
+    paths:
+      - .cargo/registry/
+      - .cargo/git/
+      - target/
+
+fmt:
+  stage: check
+  image: rust:latest
+  <<: *rust-cache
+  before_script:
+    - rustup component add rustfmt
+  script:
+    - cargo fmt --check
+
+clippy:
+  stage: check
+  image: rust:latest
+  <<: *rust-cache
+  before_script:
+    - rustup component add clippy
+  script:
+    - cargo clippy -- -D warnings
+
+test:
+  stage: test
+  image: rust:latest
+  <<: *rust-cache
+  script:
+    - cargo test -- --test-threads=1
+  needs:
+    - fmt
+    - clippy
+
+build:
+  stage: build
+  image: rust:latest
+  <<: *rust-cache
+  script:
+    - cargo build --release
+  artifacts:
+    paths:
+      - target/release/rust-todo
+    expire_in: 1 week
+  needs:
+    - test
