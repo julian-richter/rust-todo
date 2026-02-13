@@ -1,11 +1,12 @@
 use std::{env, str::FromStr};
 
-use super::variables::Application;
+use super::variables::EnvVariable;
 use crate::config::error::ConfigError;
 
-pub fn read_required<T>(var: Application) -> Result<T, ConfigError>
+pub fn read_required<T, V>(var: V) -> Result<T, ConfigError>
 where
     T: FromStr,
+    V: EnvVariable,
 {
     match env::var(var.as_str()) {
         Ok(raw) => raw.parse::<T>().map_err(|_| ConfigError::Invalid {
@@ -22,9 +23,10 @@ where
     }
 }
 
-pub fn read_optional<T>(var: Application, fallback: T) -> Result<T, ConfigError>
+pub fn read_optional<T, V>(var: V, fallback: T) -> Result<T, ConfigError>
 where
     T: FromStr,
+    V: EnvVariable,
 {
     match env::var(var.as_str()) {
         Ok(raw) => raw.parse::<T>().map_err(|_| ConfigError::Invalid {
@@ -44,6 +46,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::environment::variables::Application;
     use std::sync::Mutex;
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
